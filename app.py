@@ -2,6 +2,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import matplotlib.pyplot as plt
+import os
 
 # -------------------------
 # 1. 언어 선택 (기본: English)
@@ -167,9 +168,19 @@ if st.button(run_button):
     # 그래프 설정 - 언어에 따라 폰트 설정 (한국어 선택 시 한글 폰트 적용)
     if language == "한국어":
         import matplotlib.font_manager as fm
-        font_path = "./NanumGothic.ttf"  # 폰트 파일이 app.py와 같은 디렉터리에 있어야 합니다.
+        import os
+        font_path = os.path.join(os.path.dirname(__file__), "NanumGothicCoding.ttf")
+        if not os.path.exists(font_path):
+            print(f"폰트 파일을 찾을 수 없습니다: {font_path}")
+        else:
+            print("폰트 파일이 존재합니다:", font_path)
+        font_path = os.path.join(os.path.dirname(__file__), "NanumGothicCoding.ttf")
+ # 폰트 파일이 app.py와 같은 디렉터리에 있어야 합니다.
         try:
+            fm.fontManager.addfont(font_path)
             font_prop = fm.FontProperties(fname=font_path)
+            font_name = font_prop.get_name()
+            print("실제 폰트 이름:", font_name)
             plt.rcParams['font.family'] = font_prop.get_name()
             plt.rcParams['axes.unicode_minus'] = False
         except Exception as e:
