@@ -3,11 +3,14 @@ import yfinance as yf
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# =======================
-# 1. 기본 설정 및 다국어 지원
-# =======================
-language = st.selectbox("언어 선택 / Select Language", ["한국어", "English"])
+# -------------------------
+# 1. 언어 선택 (기본: English)
+# -------------------------
+language = st.selectbox("Select Language / 언어 선택", ["English", "한국어"])
 
+# -------------------------
+# 2. 타이틀, 레이블, 개발자 정보 설정
+# -------------------------
 if language == "한국어":
     st.title("다중 종목 적립식 투자 시뮬레이터")
     tickers_label = "종목 티커 입력 (콤마로 구분, 예: SPY, AAPL, MSFT)"
@@ -37,24 +40,25 @@ else:
     result_roi = "Estimated ROI"
     result_drawdown = "Maximum Drawdown (MDD)"
     chart_title = "Individual & Overall Portfolio Results"
-    dev_info = "Developer: Jungsik Jackson Byun"
+    # 영어 개발자 정보에 이메일 추가
+    dev_info = "Developer: Jungsik Jackson Byun  |  Email: dosmode111@gmail.com"
 
-# 항상 개발자 정보 표시 (버튼과 상관없이)
+# 항상 표시되는 개발자 정보 (상단 또는 하단에 고정)
 st.markdown("---")
 st.markdown(f"**{dev_info}**")
 
-# =======================
-# 2. 사용자 입력
-# =======================
+# -------------------------
+# 3. 사용자 입력
+# -------------------------
 tickers_input = st.text_input(tickers_label, "SPY, AAPL")
 start_date = st.date_input(start_date_label, pd.to_datetime("2015-01-01"))
 end_date = st.date_input(end_date_label, pd.to_datetime("2024-01-01"))
 investment_amount = st.number_input(investment_label, min_value=0, value=500)
 investment_period = st.selectbox(period_label, period_options, index=0)
 
-# =======================
-# 3. 시뮬레이션 함수 정의 (한 종목)
-# =======================
+# -------------------------
+# 4. 한 종목 시뮬레이션 함수
+# -------------------------
 def simulate_stock(ticker, start_date, end_date, investment_amount, investment_period):
     df_raw = yf.download(ticker, start=start_date, end=end_date)
     if df_raw.empty:
@@ -67,9 +71,8 @@ def simulate_stock(ticker, start_date, end_date, investment_amount, investment_p
     else:
         return None
     # 'Close' 열만 사용하고 결측값 보정
-    df = df_raw[[close_col]].copy()
-    df = df.ffill()
-    # 단일 열 DataFrame를 Series로 변환 후, 다시 DataFrame으로 재구성
+    df = df_raw[[close_col]].copy().ffill()
+    # 단일 열 DataFrame → Series로 변환 후 재구성
     close_series = df[close_col].squeeze()  # Series
     df = pd.DataFrame({close_col: close_series})
     
@@ -79,17 +82,17 @@ def simulate_stock(ticker, start_date, end_date, investment_amount, investment_p
     elif investment_period == "W-FRI":
         invest_dates = df.resample('W-FRI').first().index
     elif investment_period == "B":
-        invest_dates = df.index  # 모든 영업일
+        invest_dates = df.index
     else:
         invest_dates = df.index
     invest_dates = invest_dates[invest_dates.isin(df.index)]
     
-    # Investment 컬럼 생성 (해당 날짜에만 투자금액 부여)
+    # Investment 컬럼 생성 (투자한 날에만 투자 금액 부여)
     df["Investment"] = 0
     df.loc[invest_dates, "Investment"] = investment_amount
     df["Investment"] = df["Investment"].fillna(0)
     
-    # 구매한 주식 수 = Investment / Close
+    # 구매한 주식 수 계산: Investment / Close
     df["Shares Purchased"] = (df["Investment"] / df[close_col]).fillna(0)
     # 누적 주식 수
     df["Total Shares"] = df["Shares Purchased"].cumsum()
@@ -99,12 +102,11 @@ def simulate_stock(ticker, start_date, end_date, investment_amount, investment_p
     df["Portfolio Max"] = df["Portfolio Value"].cummax()
     df["Drawdown"] = df["Portfolio Value"] / df["Portfolio Max"] - 1
     df["Cumulative Investment"] = df["Investment"].cumsum()
-    
     return df
 
-# =======================
-# 4. 시뮬레이션 실행 및 결과 처리
-# =======================
+# -------------------------
+# 5. 시뮬레이션 실행 및 결과 처리 (다중 종목)
+# -------------------------
 if st.button(run_button):
     tickers = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]
     results = {}
@@ -125,7 +127,7 @@ if st.button(run_button):
     overall_index = pd.to_datetime(sorted(overall_indices))
     overall_df = pd.DataFrame(index=overall_index)
     
-    # 각 종목별 투자액과 평가 금액을 전체 DataFrame에 reindex (missing 값은 0으로 채우기)
+    # 각 종목의 Investment와 Portfolio Value를 reindex (결측치는 0)
     for t, sim_df in results.items():
         temp = sim_df[["Investment", "Portfolio Value"]].reindex(overall_index, fill_value=0)
         temp.columns = [f"{t}_Investment", f"{t}_Value"]
@@ -133,20 +135,20 @@ if st.button(run_button):
     
     overall_df = overall_df.fillna(0)
     
-    # 전체 일자별 투자액은 각 종목의 Investment(실제 투자한 날만 값이 있고, 나머지는 0)
+    # 전체 일자별 투자액: 각 종목의 Investment (투자한 날에만 값이 있으므로)
     overall_df["Overall Daily Investment"] = overall_df[[col for col in overall_df.columns if "Investment" in col]].sum(axis=1)
-    # 누적 투자액 = 일자별 투자액의 누적 합계 (forward fill하지 않고, 실제 투자한 날의 합산)
+    # 누적 투자액은 실제 투자한 날의 합산 (forward fill 대신 cumsum)
     overall_df["Overall Investment"] = overall_df["Overall Daily Investment"].cumsum()
     
-    # 전체 Portfolio Value = 각 종목의 Portfolio Value의 합산 (forward fill 필요 없음)
+    # 전체 Portfolio Value는 각 종목의 Portfolio Value의 합산
     overall_df["Overall Value"] = overall_df[[col for col in overall_df.columns if "Value" in col]].sum(axis=1)
     overall_df["Overall Portfolio Max"] = overall_df["Overall Value"].cummax()
     overall_df["Overall Drawdown"] = overall_df["Overall Value"] / overall_df["Overall Portfolio Max"] - 1
     
-    # =======================
-    # 5. 개별 종목 결과 표시
-    # =======================
-    st.markdown("## 개별 종목 결과" if language=="한국어" else "## Individual Stock Results")
+    # -------------------------
+    # 6. 개별 종목 결과 표시
+    # -------------------------
+    st.markdown("## " + ("Individual Stock Results" if language=="English" else "개별 종목 결과"))
     for t, sim_df in results.items():
         final_value = sim_df["Portfolio Value"].iloc[-1]
         total_invested = sim_df["Investment"].sum()
@@ -156,19 +158,32 @@ if st.button(run_button):
         st.write(f"**{result_value}:** ${final_value:,.2f}")
         st.write(f"**{result_roi}:** {roi:.2f}%")
     
-    # =======================
-    # 6. 전체 포트폴리오 결과 표시
-    # =======================
-    st.markdown("## 전체 포트폴리오 결과" if language=="한국어" else "## Overall Portfolio Results")
+    # -------------------------
+    # 7. 전체 포트폴리오 결과 표시
+    # -------------------------
+    st.markdown("## " + ("Overall Portfolio Results" if language=="English" else "전체 포트폴리오 결과"))
+    
+    # 그래프 설정 - 언어에 따라 폰트 설정 (한국어 선택 시 한글 폰트 적용)
+    if language == "한국어":
+        # NanumGothic.ttf 파일을 리포지토리에 포함시키고, 경로를 지정하세요.
+        import matplotlib.font_manager as fm
+        font_path = "NanumGothic.ttf"  # 리포지토리 루트에 위치해야 함
+        try:
+            font_prop = fm.FontProperties(fname=font_path)
+            plt.rcParams['font.family'] = font_prop.get_name()
+        except Exception as e:
+            st.warning("한국어 폰트 적용에 실패했습니다. 기본 폰트가 사용됩니다.")
+    else:
+        plt.rcParams['font.family'] = "sans-serif"
     
     fig2, ax2 = plt.subplots(figsize=(12, 6))
-    ax2.plot(overall_df.index, overall_df["Overall Value"], label="전체 포트폴리오 평가 금액" if language=="한국어" else "Overall Portfolio Value", color="blue")
-    ax2.plot(overall_df.index, overall_df["Overall Investment"], label="전체 누적 투자 금액" if language=="한국어" else "Overall Cumulative Investment", color="red", linestyle="dashed")
+    ax2.plot(overall_df.index, overall_df["Overall Value"], label=("Overall Portfolio Value" if language=="English" else "전체 포트폴리오 평가 금액"), color="blue")
+    ax2.plot(overall_df.index, overall_df["Overall Investment"], label=("Overall Cumulative Investment" if language=="English" else "전체 누적 투자 금액"), color="red", linestyle="dashed")
     ax2.fill_between(overall_df.index, overall_df["Overall Value"], overall_df["Overall Portfolio Max"],
-                     color="red", alpha=0.3, label="전체 최대 낙폭" if language=="한국어" else "Overall Max Drawdown")
-    ax2.set_title(chart_title + " (전체 포트폴리오)")
-    ax2.set_xlabel("날짜" if language=="한국어" else "Date")
-    ax2.set_ylabel("금액 ($)" if language=="한국어" else "Amount ($)")
+                     color="red", alpha=0.3, label=("Overall Max Drawdown" if language=="English" else "전체 최대 낙폭"))
+    ax2.set_title(chart_title + " (Overall Portfolio)")
+    ax2.set_xlabel("Date" if language=="English" else "날짜")
+    ax2.set_ylabel("Amount ($)" if language=="English" else "금액 ($)")
     ax2.legend()
     ax2.grid(True)
     st.pyplot(fig2)
