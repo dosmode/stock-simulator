@@ -12,6 +12,7 @@ language = st.selectbox("Select Language / 언어 선택", ["English", "한국�
 # 2. 타이틀, 레이블, 개발자 정보 설정
 # -------------------------
 if language == "한국어":
+
     st.title("다중 종목 적립식 투자 시뮬레이터")
     tickers_label = "종목 티커 입력 (콤마로 구분, 예: SPY, AAPL, MSFT)"
     start_date_label = "시작 날짜"
@@ -165,16 +166,17 @@ if st.button(run_button):
     
     # 그래프 설정 - 언어에 따라 폰트 설정 (한국어 선택 시 한글 폰트 적용)
     if language == "한국어":
-        # NanumGothic.ttf 파일을 리포지토리에 포함시키고, 경로를 지정하세요.
         import matplotlib.font_manager as fm
-        font_path = "NanumGothic.ttf"  # 리포지토리 루트에 위치해야 함
+        font_path = "./NanumGothic.ttf"  # 폰트 파일이 app.py와 같은 디렉터리에 있어야 합니다.
         try:
             font_prop = fm.FontProperties(fname=font_path)
             plt.rcParams['font.family'] = font_prop.get_name()
+            plt.rcParams['axes.unicode_minus'] = False
         except Exception as e:
             st.warning("한국어 폰트 적용에 실패했습니다. 기본 폰트가 사용됩니다.")
     else:
         plt.rcParams['font.family'] = "sans-serif"
+        plt.rcParams['axes.unicode_minus'] = False
     
     fig2, ax2 = plt.subplots(figsize=(12, 6))
     ax2.plot(overall_df.index, overall_df["Overall Value"], label=("Overall Portfolio Value" if language=="English" else "전체 포트폴리오 평가 금액"), color="blue")
