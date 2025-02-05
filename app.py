@@ -62,49 +62,52 @@ investment_period = st.selectbox(period_label, period_options, index=0)
 # 4. 한 종목 시뮬레이션 함수
 # -------------------------
 def simulate_stock(ticker, start_date, end_date, investment_amount, investment_period):
-    df_raw = yf.download(ticker, start=start_date, end=end_date)
-    if df_raw.empty:
+    try:
+        stock = yf.Ticker(ticker)
+        history = stock.history(period="max")  # Fetch max available history
+
+        if history.empty:
+            raise ValueError("No data available")  # Handle nonexistent stocks
+
+        first_available_date = history.index.min().strftime("%Y-%m-%d")
+
+        # If requested start date is before the stock's IPO, adjust
+        if start_date < first_available_date:
+            error_msg = f"📉 {ticker}는 {first_available_date} 이후 데이터만 제공됩니다." if language == "한국어" else f"📉 {ticker} only has data from {first_available_date} onwards."
+            st.warning(error_msg)
+            return None
+
+        df_raw = stock.history(start=start_date, end=end_date)
+
+        if df_raw.empty:
+            error_msg = f"❌ {ticker}의 데이터를 가져올 수 없습니다." if language == "한국어" else f"❌ Failed to fetch data for {ticker}."
+            st.warning(error_msg)
+            return None
+
+        # Select the 'Close' price column
+        close_col = "Close" if "Close" in df_raw.columns else "Adj Close"
+        df = df_raw[[close_col]].copy().ffill()
+
+        # Investment logic
+        invest_dates = df.resample({'M': 'ME', 'W-FRI': 'W-FRI', 'B': 'B'}.get(investment_period, 'B')).first().index
+        invest_dates = invest_dates[invest_dates.isin(df.index)]
+
+        df["Investment"] = 0
+        df.loc[invest_dates, "Investment"] = investment_amount
+        df["Shares Purchased"] = df["Investment"] / df[close_col]
+        df["Total Shares"] = df["Shares Purchased"].cumsum()
+        df["Portfolio Value"] = df["Total Shares"] * df[close_col]
+        df["Portfolio Max"] = df["Portfolio Value"].cummax()
+        df["Drawdown"] = df["Portfolio Value"] / df["Portfolio Max"] - 1
+        df["Cumulative Investment"] = df["Investment"].cumsum()
+
+        return df
+
+    except Exception as e:
+        error_msg = f"⚠️ 오류 발생: {str(e)}" if language == "한국어" else f"⚠️ Error occurred: {str(e)}"
+        st.error(error_msg)
         return None
-    # 사용할 열 선택: 'Close' 또는 'Adj Close'
-    if "Close" in df_raw.columns:
-        close_col = "Close"
-    elif "Adj Close" in df_raw.columns:
-        close_col = "Adj Close"
-    else:
-        return None
-    # 'Close' 열만 사용하고 결측값 보정
-    df = df_raw[[close_col]].copy().ffill()
-    # 단일 열 DataFrame → Series로 변환 후 재구성
-    close_series = df[close_col].squeeze()  # Series
-    df = pd.DataFrame({close_col: close_series})
-    
-    # 투자 날짜 선정
-    if investment_period == "M":
-        invest_dates = df.resample('ME').first().index  # 월말 기준
-    elif investment_period == "W-FRI":
-        invest_dates = df.resample('W-FRI').first().index
-    elif investment_period == "B":
-        invest_dates = df.index
-    else:
-        invest_dates = df.index
-    invest_dates = invest_dates[invest_dates.isin(df.index)]
-    
-    # Investment 컬럼 생성 (투자한 날에만 투자 금액 부여)
-    df["Investment"] = 0
-    df.loc[invest_dates, "Investment"] = investment_amount
-    df["Investment"] = df["Investment"].fillna(0)
-    
-    # 구매한 주식 수 계산: Investment / Close
-    df["Shares Purchased"] = (df["Investment"] / df[close_col]).fillna(0)
-    # 누적 주식 수
-    df["Total Shares"] = df["Shares Purchased"].cumsum()
-    # 포트폴리오 가치 = 누적 주식 수 * Close
-    df["Portfolio Value"] = (df["Total Shares"] * df[close_col]).fillna(0)
-    
-    df["Portfolio Max"] = df["Portfolio Value"].cummax()
-    df["Drawdown"] = df["Portfolio Value"] / df["Portfolio Max"] - 1
-    df["Cumulative Investment"] = df["Investment"].cumsum()
-    return df
+
 
 # -------------------------
 # 5. 시뮬레이션 실행 및 결과 처리 (다중 종목)
